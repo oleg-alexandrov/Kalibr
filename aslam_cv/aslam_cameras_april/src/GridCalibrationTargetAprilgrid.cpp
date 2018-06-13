@@ -162,6 +162,13 @@ bool GridCalibrationTargetAprilgrid::computeObservation(
   if (detections.size() > 1) {
     for (unsigned i = 0; i < detections.size() - 1; i++)
       if (detections[i].id == detections[i + 1].id) {
+
+        // Do not throw a fatal error if the tag is seen twice.
+        // Some frames are just corrupted. Hence ignore bad
+        // frames (with a warning) rather than die.
+        std::cout << "Wild April tag detected." << std::endl;
+        return false;
+
         //show the duplicate tags in the image
         cv::destroyAllWindows();
         cv::namedWindow("Wild Apriltag detected. Hide them!");
