@@ -101,7 +101,7 @@ def parseArgs():
     outlierSettings.add_argument('--min-views-outlier', type=int, default=20, dest='minViewOutlier', help='Number of raw views to initialize statistics (default: %(default)s)')
     outlierSettings.add_argument('--use-blakezisserman', action='store_true', dest='doBlakeZisserman', help='Enable the Blake-Zisserman m-estimator')
     outlierSettings.add_argument('--plot-outliers', action='store_true', dest='doPlotOutliers', help='Plot the detect outliers during extraction (this could be slow)')
-    
+    parser.add_argument('--target_corners_dirs', nargs='+', dest='target_corners_dirs', help='Extract the calibration target corners to these directories and stop (there should be one directory for each camera).', required=False)
     outputSettings = parser.add_argument_group('Output options')
     outputSettings.add_argument('--verbose', action='store_true', dest='verbose', help='Enable (really) verbose output (disables plots)')
     outputSettings.add_argument('--show-extraction', action='store_true', dest='showextraction', help='Show the calibration target extraction. (disables plots)')
@@ -125,7 +125,11 @@ def parseArgs():
     if len(parsed.topics) != len(parsed.models):
         sm.logError("Please specify exactly one camera model (--models) for each topic (--topics).")
         sys.exit(2)
-        
+
+    if (len(parsed.target_corners_dirs) > 0) and \
+           (len(parsed.target_corners_dirs) != len(parsed.models)):
+        sm.logError("Please specify exactly one directory for storing detected corners for each camera or ommit this argument.")
+        sys.exit(2)
     if parsed.minViewOutlier<1:
         sm.logError("Please specify a positive integer (--min-views-outlier).")
         sys.exit(2)
@@ -176,10 +180,28 @@ def main():
                 
             #extract the targets
             multithreading = not (parsed.verbose or parsed.showextraction)
-            observations = kc.extractCornersFromDataset(cam.dataset, cam.ctarget.detector, 
-                                                        multithreading=multithreading, clearImages=False,
-                                                        noTransformation=True)
+            target_corners_dir = ""
+            if len(parsed.target_corners_dirs) > 0:
+                target_corners_dir = parsed.target_corners_dirs[cam_id]
+                try:
+                    os.makedirs(target_corners_dir)
+                except:
+                    pass
+                if not os.path.exists(target_corners_dir) or \
+                       not os.path.isdir(target_corners_dir):
+                    raise RuntimeError("Cannot create directory: " + target_corners_dir)
 
+            observations = kc.extractCornersFromDataset(cam.dataset, cam.ctarget.detector, 
+                                                        multithreading=multithreading,
+                                                        clearImages=False,
+                                                        noTransformation=True,
+                                                        target_corners_dir = \
+                                                        target_corners_dir)
+
+            # We won't do calibration, will just extract the corners
+            if len(parsed.target_corners_dirs) > 0:
+                continue
+            
             #populate the database
             for obs in observations:
                 obsdb.addObservation(cam_id, obs)
@@ -194,6 +216,10 @@ def main():
             cameraList.append(cam)
         else:
             raise RuntimeError( "Unknown camera model: {0}. Try {1}.".format(modelName, cameraModels.keys()) )
+
+    if len(parsed.target_corners_dirs) > 0:
+        print("Finished extracting the calibration target corners")
+        sys.exit(1)
         
     if parsed.verbose:
         obsdb.printTable()
@@ -220,8 +246,8 @@ def main():
             else:
                 baseline_guesses=[]
                 
-            if parsed.verbose and len(cameraList)>1:
-                graph.plotGraph()
+            #if parsed.verbose and len(cameraList)>1:
+            #    graph.plotGraph()
 
             for baseline_idx, baseline in enumerate(baseline_guesses):
                 print "initialized baseline between cam{0} and cam{1} to:".format(baseline_idx, baseline_idx+1)
@@ -408,9 +434,10 @@ def main():
             kcc.printParameters(calibrator)
             
             if parsed.verbose and len(calibrator.baselines)>1:
-                f=pl.figure(100006)
-                kcc.plotCameraRig(calibrator.baselines, fno=f.number, clearFigure=False)
-                pl.show()
+                pass
+                #f=pl.figure(100006)
+                # kcc.plotCameraRig(calibrator.baselines, fno=f.number, clearFigure=False)
+                # pl.show()
             
             #write to file
             bagtag = parsed.bagfile.translate(None, "<>:/\|?*").replace('.bag', '', 1)

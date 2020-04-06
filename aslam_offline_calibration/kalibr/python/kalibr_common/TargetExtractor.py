@@ -26,7 +26,7 @@ def multicoreExtractionWrapper(detector, taskq, resultq, clearImages, noTransfor
         if success:
             resultq.put( (obs, idx) )
 
-def extractCornersFromDataset(dataset, detector, multithreading=False, numProcesses=None, clearImages=True, noTransformation=False):
+def extractCornersFromDataset(dataset, detector, multithreading=False, numProcesses=None, clearImages=True, noTransformation=False, target_corners_dir = ""):
     print "Extracting calibration target corners"    
     targetObservations = []
     numImages = dataset.numImages()
@@ -86,6 +86,24 @@ def extractCornersFromDataset(dataset, detector, multithreading=False, numProces
                 success, observation = detector.findTargetNoTransformation(timestamp, np.array(image))
             else:
                 success, observation = detector.findTarget(timestamp, np.array(image))
+
+            if success and target_corners_dir != "":
+                timestamp_obs = observation.time().toSec()
+                targetCorners = observation.getCornersTargetFrame()
+                imagePixels   = observation.getCornersImageFrame()
+                ids           = observation.getCornersIdx()
+
+                # For the filename, use the same format as in extract_image_bag,
+                # that is, the timestamp with %10.7f format is the filename.
+                filename = '%s/%10.7f.txt' % (target_corners_dir, timestamp_obs)
+                print("Writing: " + filename)
+                with open(filename, 'w') as fh:
+                    for i in range(len(targetCorners)):
+                        fh.write('%0.17g %0.17g %0.17g %0.17g %0.17g\n' %
+                                 (ids[i],
+                                  targetCorners[i][0], targetCorners[i][1],
+                                  imagePixels[i][0],   imagePixels[i][1],
+                                 ))
             if clearImages:
                 observation.clearImage()
             if success == 1:
